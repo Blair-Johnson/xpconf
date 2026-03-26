@@ -1,6 +1,6 @@
 # xpconf
 
-A minimal ML configuration library. One file, no magic.
+A minimal experimental configuration library.
 
 ## Features
 
