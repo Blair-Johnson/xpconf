@@ -13,13 +13,7 @@ A minimal ML configuration library. One file, no magic.
 ## Install
 
 ```bash
-pip install xpconf
-```
-
-Or directly from GitHub:
-
-```bash
-pip install git+https://github.com/yourname/xpconf.git
+pip install git+https://github.com/blair-johnson/xpconf.git
 ```
 
 ## Quick start
@@ -164,14 +158,3 @@ cfg = classification(vit_base, num_classes=100)
 # Ad-hoc ablation
 cfg.backbone.num_layers = 6
 ```
-
-## Design philosophy
-
-- **Configs are Python.** No YAML inheritance, no override grammar, no plugin system. Just functions returning ConfigDicts.
-- **Lambdas are references.** The `lambda: cfg.x` pattern gives you reactive values, readonly refs, and derived computation — all with zero new concepts.
-- **Explicit over magical.** You can always read the config function and know exactly what you'll get. No merging rules to memorize.
-- **Checkpoint-friendly.** `save()`/`load()` is lossless via cloudpickle. YAML is an optional lossy convenience that warns you when it loses information.
-
-## License
-
-MIT
