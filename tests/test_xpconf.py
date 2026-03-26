@@ -226,6 +226,20 @@ class TestFreezing:
         with pytest.raises(FrozenError):
             cfg.model.dim = 1024
 
+    def test_freeze_prevents_auto_nest(self):
+        cfg = ConfigDict()
+        cfg.model.dim = 768
+        cfg.freeze()
+        with pytest.raises(FrozenError):
+            _ = cfg.typo
+
+    def test_freeze_prevents_nested_auto_nest(self):
+        cfg = ConfigDict()
+        cfg.model.dim = 768
+        cfg.freeze()
+        with pytest.raises(FrozenError):
+            _ = cfg.model.typo
+
     def test_unfreeze(self):
         cfg = ConfigDict()
         cfg.x = 10
