@@ -48,6 +48,18 @@ class ConfigDict:
 
     # Attributes that live on the object itself, not in the data store.
     _RESERVED = frozenset({"_data", "_frozen", "_auto_nest"})
+    # Public method/property names that cannot be used as config keys.
+    # Built lazily on first access to avoid forward-reference issues.
+    _RESERVED_KEYS: frozenset | None = None
+
+    @classmethod
+    def _get_reserved_keys(cls) -> frozenset:
+        if cls._RESERVED_KEYS is None:
+            cls._RESERVED_KEYS = frozenset(
+                name for name in dir(cls)
+                if not name.startswith("_")
+            )
+        return cls._RESERVED_KEYS
 
     def __init__(self, auto_nest: bool = True, **kwargs: Any):
         object.__setattr__(self, "_data", {})
@@ -97,6 +109,11 @@ class ConfigDict:
         if key in self._RESERVED:
             object.__setattr__(self, key, value)
             return
+        if key in self._get_reserved_keys():
+            raise ReservedKeyError(
+                f"Cannot use {key!r} as a config key — "
+                f"it would shadow ConfigDict.{key}()"
+            )
         self._check_frozen()
         data = object.__getattribute__(self, "_data")
         data[key] = value
@@ -161,6 +178,24 @@ class ConfigDict:
 
     # ── Raw access (bypass resolution) ─────────────────────
 
+    _SENTINEL = object()
+
+    def get(self, key: str, default: Any = _SENTINEL) -> Any:
+        """
+        Get a value by key, returning *default* if missing.
+
+        Unlike attribute access, this never auto-nests and works
+        regardless of frozen state — it is a pure read.
+
+        Raises KeyError if the key is missing and no default is given.
+        """
+        data = object.__getattribute__(self, "_data")
+        if key in data:
+            return self._resolve(data[key])
+        if default is not self._SENTINEL:
+            return default
+        raise KeyError(key)
+
     def get_raw(self, key: str) -> Any:
         """Get the raw stored value without resolving callables."""
         data = object.__getattribute__(self, "_data")
@@ -170,24 +205,33 @@ class ConfigDict:
 
     # ── Dotpath access ─────────────────────────────────────
 
-    def get_by_dotpath(self, path: str) -> Any:
+    def get_by_dotpath(self, path: str, default: Any = _SENTINEL) -> Any:
         """
-        Get a value by dotpath string.
+        Get a value by dotpath string, with an optional default.
 
             cfg.get_by_dotpath('model.backbone.hidden_dim')
-            # equivalent to cfg.model.backbone.hidden_dim
+            cfg.get_by_dotpath('train.callback_list', default=[])
+
+        Never auto-nests. Raises KeyError if any segment is missing
+        and no default is given.
         """
         obj = self
         parts = path.split(".")
         for i, part in enumerate(parts):
-            try:
-                obj = obj[part]
-            except TypeError:
+            if not isinstance(obj, ConfigDict):
+                if default is not self._SENTINEL:
+                    return default
                 traversed = ".".join(parts[:i])
                 raise KeyError(
                     f"Cannot traverse into {traversed!r} "
                     f"(got {type(obj).__name__}, expected ConfigDict)"
-                ) from None
+                )
+            data = object.__getattribute__(obj, "_data")
+            if part not in data:
+                if default is not self._SENTINEL:
+                    return default
+                raise KeyError(path)
+            obj = self._resolve(data[part])
         return obj
 
     def set_by_dotpath(self, path: str, value: Any, *, coerce: bool = False):
@@ -386,4 +430,9 @@ class ConfigDict:
 
 class FrozenError(Exception):
     """Raised when attempting to mutate a frozen ConfigDict."""
+    pass
+
+
+class ReservedKeyError(Exception):
+    """Raised when a config key would shadow a ConfigDict method."""
     pass

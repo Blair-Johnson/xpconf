@@ -3,7 +3,7 @@
 import os
 import tempfile
 import pytest
-from xpconf import ConfigDict, FrozenError
+from xpconf import ConfigDict, FrozenError, ReservedKeyError
 
 
 # ── Basic dot access ──────────────────────────────────────
@@ -659,6 +659,121 @@ class TestDotpath:
         cfg.set_by_dotpath("layers", "24", coerce=False)
         assert cfg.layers == "24"  # stays as string
 
+# ── get() with default ────────────────────────────────────
+
+class TestGet:
+    def test_get_existing_key(self):
+        cfg = ConfigDict()
+        cfg.x = 10
+        assert cfg.get("x") == 10
+
+    def test_get_missing_key_with_default(self):
+        cfg = ConfigDict()
+        assert cfg.get("x", 42) == 42
+
+    def test_get_missing_key_no_default_raises(self):
+        cfg = ConfigDict()
+        with pytest.raises(KeyError):
+            cfg.get("x")
+
+    def test_get_resolves_callables(self):
+        cfg = ConfigDict()
+        cfg.x = 10
+        cfg.y = lambda: cfg.x * 2
+        assert cfg.get("y") == 20
+
+    def test_get_does_not_auto_nest(self):
+        cfg = ConfigDict(auto_nest=True)
+        result = cfg.get("missing", [])
+        assert result == []
+        assert "missing" not in cfg
+
+    def test_get_works_when_frozen(self):
+        cfg = ConfigDict()
+        cfg.x = 10
+        cfg.freeze()
+        assert cfg.get("x") == 10
+        assert cfg.get("missing", "default") == "default"
+
+    def test_get_default_none(self):
+        cfg = ConfigDict()
+        assert cfg.get("x", None) is None
+
+
+# ── Reserved key protection ───────────────────────────────
+
+class TestReservedKeys:
+    def test_reject_method_name_as_key(self):
+        cfg = ConfigDict()
+        with pytest.raises(ReservedKeyError, match="get"):
+            cfg.get = 5
+
+    def test_reject_freeze_as_key(self):
+        cfg = ConfigDict()
+        with pytest.raises(ReservedKeyError, match="freeze"):
+            cfg.freeze = True
+
+    def test_reject_via_setitem(self):
+        cfg = ConfigDict()
+        with pytest.raises(ReservedKeyError, match="keys"):
+            cfg["keys"] = []
+
+    def test_reject_via_update(self):
+        cfg = ConfigDict()
+        with pytest.raises(ReservedKeyError):
+            cfg.update({"save": "oops"})
+
+    def test_reject_via_constructor_kwargs(self):
+        with pytest.raises(ReservedKeyError):
+            ConfigDict(items=5)
+
+    def test_non_reserved_key_works(self):
+        cfg = ConfigDict()
+        cfg.callback_list = []
+        assert cfg.callback_list == []
+
+
+# ── get_by_dotpath with default ──────────────────────────
+
+class TestGetByDotpathDefault:
+    def test_existing_path(self):
+        cfg = ConfigDict()
+        cfg.train.lr = 3e-4
+        assert cfg.get_by_dotpath("train.lr") == 3e-4
+
+    def test_missing_leaf_with_default(self):
+        cfg = ConfigDict()
+        cfg.train.lr = 3e-4
+        cfg.freeze()
+        assert cfg.get_by_dotpath("train.callback_list", default=[]) == []
+
+    def test_missing_intermediate_with_default(self):
+        cfg = ConfigDict()
+        cfg.x = 10
+        cfg.freeze()
+        assert cfg.get_by_dotpath("nonexistent.deep.path", default=42) == 42
+
+    def test_missing_path_no_default_raises(self):
+        cfg = ConfigDict()
+        cfg.x = 10
+        cfg.freeze()
+        with pytest.raises(KeyError):
+            cfg.get_by_dotpath("nonexistent.path")
+
+    def test_does_not_auto_nest(self):
+        cfg = ConfigDict(auto_nest=True)
+        result = cfg.get_by_dotpath("a.b.c", default="nope")
+        assert result == "nope"
+        assert "a" not in cfg
+
+    def test_resolves_callables(self):
+        cfg = ConfigDict()
+        cfg.x = 10
+        cfg.y = lambda: cfg.x * 2
+        assert cfg.get_by_dotpath("y") == 20
+
+
+class TestDotpathContinued:
     def test_set_by_dotpath_respects_freeze(self):
         cfg = ConfigDict()
         cfg.x = 10
