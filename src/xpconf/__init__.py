@@ -84,9 +84,7 @@ class ConfigDict:
         if key in data:
             return self._resolve(data[key])
         if object.__getattribute__(self, "_frozen"):
-            raise FrozenError(
-                f"Cannot auto-nest {key!r} on a frozen ConfigDict"
-            )
+            raise KeyError(key)
         if object.__getattribute__(self, "_auto_nest"):
             child = ConfigDict(auto_nest=True)
             data[key] = child
